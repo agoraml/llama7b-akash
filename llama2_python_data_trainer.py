@@ -1,4 +1,5 @@
 import argparse
+import logging
 import bitsandbytes as bnb
 from datasets import load_dataset
 from functools import partial
@@ -22,6 +23,12 @@ from transformers import (
     TrainingArguments,
 )
 from datasets import load_dataset
+
+# Set up loggging
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+logger.info("Starting training script")
+
 # hugging face cli log in to access llama2
 from huggingface_hub import login
 from utilities import create_bnb_config, load_model, get_max_length, tokenize_data, dataset_loader, train_llama2
@@ -33,11 +40,13 @@ login(token="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")
 # Load dataset 
 dataset_name="iamtarun/python_code_instructions_18k_alpaca"
 pydata = dataset_loader(dataset_name)['train']
+logger.info("Pydata loaded")
 
 # Load model from HF with user's token and with bitsandbytes config
 model_name = "meta-llama/Llama-2-7b-hf"
 bnb_config = create_bnb_config()
 model, tokenizer = load_model(model_name, bnb_config)
+logger.info("Model and tokenizer loaded")
 max_length = get_max_length(model)
 
 # Tokenize data and map it to training set
@@ -47,3 +56,14 @@ final_data = pydata.map(tokenize_data)
 output_dir = "results/llama2/final_checkpoint"
 train_llama2(model, tokenizer, final_data, output_dir)
 
+### Merge weights
+model = AutoPeftModelForCausalLM.from_pretrained(output_dir, device_map="auto", torch_dtype=torch.bfloat16)
+model = model.merge_and_unload()
+
+output_merged_dir = "results/llama2/final_merged_checkpoint"
+os.makedirs(output_merged_dir, exist_ok=True)
+model.save_pretrained(output_merged_dir, safe_serialization=True)
+
+# save tokenizer for easy inference
+tokenizer = AutoTokenizer.from_pretrained(model_name)
+tokenizer.save_pretrained(output_merged_dir)

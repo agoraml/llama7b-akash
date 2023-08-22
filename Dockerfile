@@ -6,8 +6,9 @@ LABEL description="Training Llama2 on python code data"
 WORKDIR /training 
 
 COPY requirements.txt ./
-RUN pip install -no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-CMD [ "python", "llama2_python_data_trainer.py" ]
+ENTRYPOINT [ "python", "llama2_python_data_trainer.py" ]
+
