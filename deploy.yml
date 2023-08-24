@@ -1,0 +1,39 @@
+---
+version: "2.0"
+
+services:
+  llama2agora:
+    image: shimpa/falcon7b:0.07
+    expose:
+      - port: 8000
+        as: 80
+        to:
+          - global: true
+
+profiles:
+  compute:
+    llama2agora:
+      resources:
+        cpu:
+          units: 8
+        memory:
+          size: 100Gi
+        gpu:
+          units: 1
+          attributes:
+            vendor:
+              nvidia:
+        storage:
+          - size: 200Gi
+  placement:
+    akash:
+      pricing:
+        falcon7b: 
+          denom: uakt
+          amount: 100000
+
+deployment:
+  llama2agora:
+    akash:
+      profile: llama2agora
+      count: 1
