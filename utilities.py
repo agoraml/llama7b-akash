@@ -22,6 +22,10 @@ from transformers import (
     TrainingArguments,
 )
 from datasets import load_dataset
+import logging
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 # helper function to load model - should work for all HF models
 # bnb config is for quanitzation thorugh bitsandbytes
@@ -29,6 +33,11 @@ from datasets import load_dataset
 # TODO: make the function general for all hf models. currently built for llama2
 def load_model(model_name, bnb_config):
     n_gpus = torch.cuda.device_count() # log this somewhere
+    cuda_available = torch.cuda.is_available()
+    if cuda_available:
+        logger.info(f'Cuda is available for use and there are {n_gpus} GPUs')
+    else:
+        logger.info('Cuda is not available for use')
     max_memory = f'{40960}MB' #why this - 40gb?
 
     model = AutoModelForCausalLM.from_pretrained(
@@ -241,3 +250,7 @@ def train_llama2(model, tokenizer, dataset, output_dir):
     del model
     del trainer
     torch.cuda.empty_cache()
+
+
+if __name__ == '__main__':
+    load_model('', {})

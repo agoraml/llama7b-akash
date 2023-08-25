@@ -23,6 +23,7 @@ from transformers import (
     TrainingArguments,
 )
 from datasets import load_dataset
+from dotenv import load_dotenv
 
 # Set up loggging
 logger = logging.getLogger(__name__)
@@ -33,8 +34,14 @@ logger.info("Starting training script")
 from huggingface_hub import login
 from utilities import create_bnb_config, load_model, get_max_length, tokenize_data, dataset_loader, train_llama2
 
+load_dotenv()
+try: 
+    HUGGING_FACE_TOKEN = os.environ['HUGGING_FACE_TOKEN']
+except KeyError:
+    raise Exception('Need to pass hugging face access token as environment variable.')
+
 ### HF login
-login(token="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")
+login(token=HUGGING_FACE_TOKEN)
 
 ### Script
 # Load dataset 
