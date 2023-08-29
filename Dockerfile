@@ -9,5 +9,5 @@ WORKDIR /training
 
 COPY . .
 
-ENTRYPOINT [ "python", "llama2_pretrain_python.py" ]
+ENTRYPOINT [ "python", "agora_python_bot.py" ]
 
