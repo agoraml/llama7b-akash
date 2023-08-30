@@ -5,7 +5,7 @@ from pynvml import *
 import os
 from transformers import BitsAndBytesConfig #wrapper class for bitsandbytes
 from transformers import AutoModelForCausalLM, AutoTokenizer, TrainingArguments, Trainer
-from peft import LoraConfig, get_peft_model, PeftModel
+from peft import LoraConfig, get_peft_model, PeftModel, AutoPeftModelForCausalLM
 import nvidia_smi
 from trl import SFTTrainer
 import gc
@@ -202,9 +202,3 @@ base_model = AutoModelForCausalLM.from_pretrained(
 )
 model = PeftModel.from_pretrained(base_model, "agora_codebot")
 model = model.merge_and_unload()
-
-# Reload tokenizer to save it
-tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
-tokenizer.add_special_tokens({'pad_token': '[PAD]'})
-tokenizer.pad_token = tokenizer.eos_token
-tokenizer.padding_side = "right"
