@@ -2,8 +2,8 @@
 version: "2.0"
 
 services:
-  llama2agora:
-    image: ishandhanani/llama2:latest
+  finetune:
+    image: tmontfort/finetune:latest
     expose:
       - port: 8000
         as: 80
@@ -12,7 +12,7 @@ services:
 
 profiles:
   compute:
-    llama2agora:
+    finetune:
       resources:
         cpu:
           units: 8
@@ -33,7 +33,7 @@ profiles:
           amount: 100000
 
 deployment:
-  llama2agora:
+  finetune:
     akash:
-      profile: llama2agora
+      profile: finetune
       count: 1

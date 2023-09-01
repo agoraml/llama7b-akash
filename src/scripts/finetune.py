@@ -2,6 +2,7 @@ from dataclasses import dataclass, field
 from typing import Optional, Dict
 import logging
 import nvidia_smi
+import os
 
 import torch
 from datasets import load_dataset
@@ -20,6 +21,7 @@ from peft import (
     get_peft_model
 )
 from trl import SFTTrainer
+from huggingface_hub import login
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -213,7 +215,17 @@ def safe_save_model_for_hf_trainer(trainer: Trainer, output_dir: str):
 def preprocess_data(source, tokenizer: PreTrainedTokenizer) -> Dict:
     return {}
 
+def huggingface_login():
+    try: 
+        HUGGING_FACE_TOKEN = os.environ['HUGGING_FACE_TOKEN']
+    except KeyError:
+        raise Exception('Need to pass hugging face access token as environment variable.')
+
+    login(token=HUGGING_FACE_TOKEN)
+
 def finetune():
+    huggingface_login()
+    
     parser = HfArgumentParser(
         (ModelArguments, DataArguments, ModelTrainingArguments, QuantizationArguments, QloraArguments)
     )
