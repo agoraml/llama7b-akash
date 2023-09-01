@@ -1,0 +1,12 @@
+setuptools_rust==1.7.0 
+setuptools==68.1.2
+wheel==0.41.2
+peft==0.5.0
+accelerate==0.22.0
+datasets==2.14.4
+bitsandbytes==0.41.1
+nvidia-ml-py3==7.352.0
+scipy==1.11.2
+trl==0.7.1
+torch==2.0.1
+transformers==4.32.1

@@ -1,6 +1,7 @@
 from dataclasses import dataclass, field
-import pathlib
-from typing import Optional, Dict, List
+from typing import Optional, Dict
+import logging
+import nvidia_smi
 
 import torch
 from datasets import load_dataset
@@ -18,6 +19,9 @@ from peft import (
     AutoPeftModelForCausalLM
 )
 from trl import SFTTrainer
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 @dataclass
 class ModelArguments:
@@ -113,6 +117,11 @@ def safe_save_model_for_hf_trainer(trainer: Trainer, output_dir: str):
 def preprocess_data(source, tokenizer: PreTrainedTokenizer) -> Dict:
     return {}
 
+def finetune():
+    parser = HfArgumentParser(
+        (ModelArguments, DataArguments, ModelTrainingArguments, QuantizationArguments, QloraArguments)
+    )
+    model_args, data_args, training_args, quant_args, qlora_args = parser.parse_args_into_dataclasses()
 
 def build_bnb_config(quant_args) -> BitsAndBytesConfig:
     bnb_config = BitsAndBytesConfig(
