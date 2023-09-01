@@ -1,7 +1,6 @@
 from dataclasses import dataclass, field
-from typing import Optional, Dict
-import logging
-import nvidia_smi
+import pathlib
+from typing import Optional, Dict, List
 
 import torch
 from datasets import load_dataset
@@ -20,9 +19,6 @@ from peft import (
 )
 from trl import SFTTrainer
 
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
-
 @dataclass
 class ModelArguments:
     model_name: Optional[str] = field(
@@ -39,6 +35,10 @@ class DataArguments:
     hf_data_path: str = field(
         default="iamtarun/python_code_instructions_18k_alpaca",
         metadata={"help": "The path to the HF dataset. Defaults to `iamtarun/python_code_instructions_18k_alpaca`"}
+    )
+    split: Optional[str] = field(
+        default="train", #TODO: should this be default?,
+        metadata={"help": "Which portion of the dataset you want to use"}
     )
     personal_data: Optional[str] = field(
         default=None,
@@ -57,6 +57,10 @@ class ModelTrainingArguments(TrainingArguments):
     model_max_length: int = field(
         default=512,
         metadata={"help": "Different models have different max lengths but this keeps it at a standard 512 incase you don't specify. Seq might be truncated"}
+    )
+    save_total_limit: Optional[int] = field(
+        default=1,
+        metadata={"help", "How many checkpoints do we want to store. Keep at 1 for now"}
     )
 
 @dataclass
@@ -117,11 +121,6 @@ def safe_save_model_for_hf_trainer(trainer: Trainer, output_dir: str):
 def preprocess_data(source, tokenizer: PreTrainedTokenizer) -> Dict:
     return {}
 
-def finetune():
-    parser = HfArgumentParser(
-        (ModelArguments, DataArguments, ModelTrainingArguments, QuantizationArguments, QloraArguments)
-    )
-    model_args, data_args, training_args, quant_args, qlora_args = parser.parse_args_into_dataclasses()
 
 def build_bnb_config(quant_args) -> BitsAndBytesConfig:
     bnb_config = BitsAndBytesConfig(
@@ -147,6 +146,9 @@ def finetune():
     )
     model_args, data_args, training_args, quant_args, qlora_args = parser.parse_args_into_dataclasses()
 
+    dataset = load_dataset(data_args.hf_data_path, split=data_args.split)
+    dataset = dataset.remove_columns(['instruction', 'input', 'output']) #TODO: this is python dataset specific preprocessing. Will need to handle this inside preprocess function somehow
+
     bnb_config = build_bnb_config(quant_args=quant_args)
     peft_config = build_lora_config(qlora_args=qlora_args)
 
@@ -157,14 +159,31 @@ def finetune():
     )
 
     tokenizer = AutoTokenizer.from_pretrained(model_args.model_name)
-    tokenizer.pad_token = tokenizer.eos_token # required for llama2
+    tokenizer.pad_token = tokenizer.eos_token
 
-    # logic to restart from checkpoint 
-    resume_from_checkpoint = False
+    trainer = SFTTrainer(
+        model=model,
+        train_dataset=dataset,
+        peft_config=peft_config,
+        dataset_text_field="prompt", #TODO: this will change based on dataset. I would add this as an optional default into DataArguments
+        max_seq_length=None,
+        tokenizer=tokenizer,
+        args=training_args,
+        packing=False,
+    )
+
+    # logic to restart from checkpoint
+    # should the logic be here? or before i load in the model, tokenizer, data...need to find some better examples
     checkpoints = list(
         pathlib.Path(training_args.output_dir).glob('checkpoint-*'))
+    if checkpoints:
+        trainer.train(resume_from_checkpoint=True)
+    else:
+        trainer.train()
 
-
+    trainer.save_state() #grabbed from skypilot but need to understand state better
+    safe_save_model_for_hf_trainer(trainer=trainer,
+                                   output_dir=training_args.output_dir)
 
 if __name__ == "__main__":
     finetune()
