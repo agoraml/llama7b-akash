@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+import pathlib
 from typing import Optional, Dict, List
 
 import torch
@@ -56,7 +57,7 @@ class ModelTrainingArguments(TrainingArguments):
 
 @dataclass
 class QuanitzationArguments(BitsAndBytesConfig):
-    # added all the params here now but if I inherit Bits and Bytes config i dont think i need it
+    # added all the params here in order to specify defaults
     load_in_4bit: bool = field(
         default=True,
         metadata={"help": "Load a model in 4bit"}
@@ -76,7 +77,7 @@ class QuanitzationArguments(BitsAndBytesConfig):
 
 @dataclass
 class QloraArguments(LoraConfig):
-    # added all the params here now but if I inherit Bits and Bytes config i dont think i need it
+    # added all the params here in order to specify defaults
     lora_r: Optional[int] = field(
         default=64, 
         metadata={"help": "LoRA attention dimension"}
@@ -112,11 +113,49 @@ def safe_save_model_for_hf_trainer(trainer: Trainer, output_dir: str):
 def preprocess_data(source, tokenizer: PreTrainedTokenizer) -> Dict:
     return {}
 
+
+def build_bnb_config(quant_args) -> BitsAndBytesConfig:
+    bnb_config = BitsAndBytesConfig(
+        load_in_4bit=quant_args.load_in_4bit,
+        bnb_4bit_quant_type=quant_args.bnb_4bit_compute_dtype,
+        bnb_4bit_compute_dtype=quant_args.bnb_4bit_compute_dtype
+    )
+    return bnb_config
+
+def build_lora_config(qlora_args) -> LoraConfig:
+    peft_config = LoraConfig(
+        lora_alpha=qlora_args.lora_alpha,
+        lora_dropout=qlora_args.lora_dropout,
+        r=qlora_args.lora_r,
+        bias=qlora_args.bias,
+        task_type=qlora_args.task_type
+    )
+    return peft_config
+
 def finetune():
     parser = HfArgumentParser(
         (ModelArguments, DataArguments, ModelTrainingArguments, QuanitzationArguments, QloraArguments)
     )
     model_args, data_args, training_args, quant_args, qlora_args = parser.parse_args_into_dataclasses()
+
+    bnb_config = build_bnb_config(quant_args=quant_args)
+    peft_config = build_lora_config(qlora_args=qlora_args)
+
+    model = AutoModelForCausalLM.from_pretrained(
+        model_args.model_name,
+        quantization_config = bnb_config,
+        device_map = "auto",
+    )
+
+    tokenizer = AutoTokenizer.from_pretrained(model_args.model_name)
+    tokenizer.pad_token = tokenizer.eos_token # required for llama2
+
+    # logic to restart from checkpoint 
+    resume_from_checkpoint = False
+    checkpoints = list(
+        pathlib.Path(training_args.output_dir).glob('checkpoint-*'))
+
+
 
 if __name__ == "__main__":
     finetune()
