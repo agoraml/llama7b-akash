@@ -1,6 +1,8 @@
 from dataclasses import dataclass, field
 import pathlib
 from typing import Optional, Dict, List
+import logging
+import nvidia_smi
 
 import torch
 from datasets import load_dataset
@@ -19,6 +21,9 @@ from peft import (
 )
 from trl import SFTTrainer
 
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+
 @dataclass
 class ModelArguments:
     model_name: Optional[str] = field(
@@ -26,7 +31,7 @@ class ModelArguments:
         metadata={"help": "The model that you want to train from Huggingface. Defaults to Meta's Llama2 7B-chat and requires a HF login"}
     )
     new_model_name: Optional[str] = field(
-        default="airpodmaxsucks-7b-chat",
+        default="agora-llama-7b-chat",
         metadata={"help": "The name for your fine-tuned model"}
     )
 
@@ -45,12 +50,13 @@ class DataArguments:
         metadata={"help": "The path to your proprietary data"}
     )
 
+
 @dataclass
 class ModelTrainingArguments(TrainingArguments):
     # Specify an additional cache dir for files downloaded during training
     # Usually things are downloaded into ~/.cache/huggingface
     # Adding this is helpful for distributed training where all workers should read from a central cache 
-    cache_dir = Optional[str] = field(
+    cache_dir : Optional[str] = field(
         default=None,
         metadata={"help": "Optional path where you want model checkpoints and final model to be saved"}
     )
@@ -58,13 +64,86 @@ class ModelTrainingArguments(TrainingArguments):
         default=512,
         metadata={"help": "Different models have different max lengths but this keeps it at a standard 512 incase you don't specify. Seq might be truncated"}
     )
-    save_total_limit: Optional[int] = field(
+    output_dir : str = field(
+        default="./results",
+        metadata={"help": "Optional path where you want model checkpoints and final model to be saved"}
+    ) 
+    num_train_epochs : int = field(
         default=1,
-        metadata={"help", "How many checkpoints do we want to store. Keep at 1 for now"}
+        metadata={"help": "Number of training epochs"}
+    )
+    fp16 : bool = field(
+        default=True,
+        metadata={"help": "Enable fp16 training"}
+    )
+    bf16 : bool = field(
+        default=False,
+        metadata={"help": "Enable bf16 training. Only possible on A100 GPUs"}
+    )
+    per_device_train_batch_size : bool = field(
+        default=10,
+        metadata={"help": "Training batch size per device"}
+    )
+    gradient_accumulation_steps : int = field(
+        default=2,
+        metadata={"help": "Number of updates steps to accumulate the gradients for, before performing a backward/update pass."}
+    )
+    gradient_checkpointing : bool = field(
+        default=True,
+        metadata={"help": " If True, use gradient checkpointing to save memory at the expense of slower backward pass."}
+    )
+    max_grad_norm : float = field(
+        default=0.0,
+        metadata={"help": "Maximum gradient normal (gradient clipping)"}
+    )
+    learning_rate : float = field(
+        default=2e-4,
+        metadata={"help": "Initial learning rate (AdamW optimizer)"}
+    )
+    weight_decay : float = field(
+        default=0.001,
+        metadata={"help": "Weight decay to apply to all layers except bias/LayerNorm weights"}
+    )
+    optim : str = field(
+        default="paged_adamw_32bit",
+        metadata={"help": "Optimizer to use for training"}
+    )
+    lr_scheduler_type : str = field(
+        default="constant",
+        metadata={"help": "Learning rate schedule (constant a bit better than cosine)"}
+    )
+    warmup_ratio : float = field(
+        default=0.03,
+        metadata={"help": "Ratio of steps for a linear warmup (from 0 to learning rate)"}
+    )
+    group_by_length : bool = field(
+        default=True,
+        metadata={"help": "Group sequences into batches with same length - Saves memory and speeds up training considerably"}
+    )
+    save_steps : int = field(
+        default=25,
+        metadata={"help": "Save checkpoint every X updates steps"}
+    )
+    logging_steps : int = field(
+        default=25,
+        metadata={"help": "Log every X updates steps"}
+    )
+    max_seq_length : int = field(
+        default=None,
+        metadata={"help":"Maximum sequence length to use"}
+    )
+    packing : bool = field(
+        default=False,
+        metadata={"help":"Pack multiple short examples in the same input sequence to increase efficiency"}
+    )
+    device_map : any = field(
+        default_factory=(lambda: {"":0}),
+        metadata={"help":"Device mapping for the SFTTrainer"}
     )
 
+
 @dataclass
-class QuanitzationArguments(BitsAndBytesConfig):
+class QuanitzationArguments():
     # added all the params here in order to specify defaults
     load_in_4bit: bool = field(
         default=True,
@@ -84,7 +163,7 @@ class QuanitzationArguments(BitsAndBytesConfig):
     )
 
 @dataclass
-class QloraArguments(LoraConfig):
+class QloraArguments():
     # added all the params here in order to specify defaults
     lora_r: Optional[int] = field(
         default=64, 
@@ -121,6 +200,14 @@ def safe_save_model_for_hf_trainer(trainer: Trainer, output_dir: str):
 def preprocess_data(source, tokenizer: PreTrainedTokenizer) -> Dict:
     return {}
 
+def print_gpu_utilization():
+    nvidia_smi.nvmlInit()
+    deviceCount = nvidia_smi.nvmlDeviceGetCount()
+    for i in range(deviceCount):
+        handle = nvidia_smi.nvmlDeviceGetHandleByIndex(i)
+        info = nvidia_smi.nvmlDeviceGetMemoryInfo(handle)
+        print("Device {}: {}, Memory : ({:.2f}% free): {}(total), {} (free), {} (used)".format(i, nvidia_smi.nvmlDeviceGetName(handle), 100*info.free/info.total, info.total, info.free, info.used))
+    nvidia_smi.nvmlShutdown()
 
 def build_bnb_config(quant_args) -> BitsAndBytesConfig:
     bnb_config = BitsAndBytesConfig(
@@ -146,6 +233,15 @@ def finetune():
     )
     model_args, data_args, training_args, quant_args, qlora_args = parser.parse_args_into_dataclasses()
 
+    # logic to restart from checkpoint
+    # should the logic be here? or before i load in the model, tokenizer, data...need to find some better examples
+    checkpoints = list(
+        pathlib.Path(training_args.output_dir).glob('checkpoint-*'))
+    if checkpoints:
+        trainer.train(resume_from_checkpoint=True)
+    else:
+        trainer.train()
+
     dataset = load_dataset(data_args.hf_data_path, split=data_args.split)
     dataset = dataset.remove_columns(['instruction', 'input', 'output']) #TODO: this is python dataset specific preprocessing. Will need to handle this inside preprocess function somehow
 
@@ -162,7 +258,7 @@ def finetune():
     tokenizer.pad_token = tokenizer.eos_token
 
     trainer = SFTTrainer(
-        model=model,
+        model=model,  
         train_dataset=dataset,
         peft_config=peft_config,
         dataset_text_field="prompt", #TODO: this will change based on dataset. I would add this as an optional default into DataArguments
@@ -171,15 +267,6 @@ def finetune():
         args=training_args,
         packing=False,
     )
-
-    # logic to restart from checkpoint
-    # should the logic be here? or before i load in the model, tokenizer, data...need to find some better examples
-    checkpoints = list(
-        pathlib.Path(training_args.output_dir).glob('checkpoint-*'))
-    if checkpoints:
-        trainer.train(resume_from_checkpoint=True)
-    else:
-        trainer.train()
 
     trainer.save_state() #grabbed from skypilot but need to understand state better
     safe_save_model_for_hf_trainer(trainer=trainer,
