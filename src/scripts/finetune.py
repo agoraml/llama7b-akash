@@ -3,9 +3,12 @@ import pathlib
 from typing import Optional, Dict, List
 import logging
 import nvidia_smi
+import os
+import s3fs
 
 import torch
 from datasets import load_dataset
+from huggingface_hub import login
 from transformers import (
     AutoModelForCausalLM,
     AutoTokenizer,
@@ -14,11 +17,14 @@ from transformers import (
     HfArgumentParser,
     Trainer,
     TrainingArguments,
+    TrainerCallback
 )
 from peft import (
     LoraConfig,
     AutoPeftModelForCausalLM
 )
+from transformers.trainer_callback import TrainerControl, TrainerState
+from transformers.training_args import TrainingArguments
 from trl import SFTTrainer
 
 logger = logging.getLogger(__name__)
@@ -50,7 +56,6 @@ class DataArguments:
         metadata={"help": "The path to your proprietary data"}
     )
 
-
 @dataclass
 class ModelTrainingArguments(TrainingArguments):
     # Specify an additional cache dir for files downloaded during training
@@ -65,7 +70,7 @@ class ModelTrainingArguments(TrainingArguments):
         metadata={"help": "Different models have different max lengths but this keeps it at a standard 512 incase you don't specify. Seq might be truncated"}
     )
     output_dir : str = field(
-        default="./results",
+        default="results", 
         metadata={"help": "Optional path where you want model checkpoints and final model to be saved"}
     ) 
     num_train_epochs : int = field(
@@ -123,6 +128,10 @@ class ModelTrainingArguments(TrainingArguments):
     save_steps : int = field(
         default=25,
         metadata={"help": "Save checkpoint every X updates steps"}
+    )
+    save_total_limit: int = field(
+        default=2,
+        metadata={}
     )
     logging_steps : int = field(
         default=25,
@@ -186,6 +195,41 @@ class QloraArguments():
         metadata={}
     )
 
+class CheckpointCallback(TrainerCallback):
+   def __init__(self, training_args) -> None:
+       self.training_args = training_args
+   
+   def on_save(self, args: TrainingArguments, state: TrainerState, control: TrainerControl, **kwargs):
+        try:
+            ACCESS_KEY_ID = os.environ['ACCESS_KEY_ID']
+            SECRET_ACCESS_KEY = os.environ['SECRET_ACCESS_KEY']
+            ENDPOINT_URL = os.environ['ENDPOINT_URL']
+        except KeyError:
+            raise Exception("Need to pass in Storj credentials as environment variables")
+        
+        storage_options = {
+            "key": ACCESS_KEY_ID,
+            "sec": SECRET_ACCESS_KEY,
+            "client_kwargs": {
+                "endpoint_url": ENDPOINT_URL
+            }
+        }
+
+        s3 = s3fs.S3FileSystem(**storage_options)
+        ckpt_dir = self.training_args.output_dir
+        for filename in os.listdir(ckpt_dir):
+            with s3.open(f's3://demo-bucket/{filename}', 'wb') as f:
+                f.write(open(os.path.join(ckpt_dir, filename), 'rb').read())
+
+        
+def huggingface_login():
+    try: 
+        HUGGING_FACE_TOKEN = os.environ['HUGGING_FACE_TOKEN']
+    except KeyError:
+        raise Exception('Need to pass hugging face access token as environment variable.')
+
+    login(token=HUGGING_FACE_TOKEN)
+
 def safe_save_model_for_hf_trainer(trainer: Trainer, output_dir: str):
     # Get model state dict containing weights at time of call
     # Convert to CPU tensors -> reduced memory?
@@ -212,7 +256,7 @@ def print_gpu_utilization():
 def build_bnb_config(quant_args) -> BitsAndBytesConfig:
     bnb_config = BitsAndBytesConfig(
         load_in_4bit=quant_args.load_in_4bit,
-        bnb_4bit_quant_type=quant_args.bnb_4bit_compute_dtype,
+        bnb_4bit_quant_type=quant_args.bnb_4bit_quant_dtype,
         bnb_4bit_compute_dtype=quant_args.bnb_4bit_compute_dtype
     )
     return bnb_config
@@ -228,22 +272,19 @@ def build_lora_config(qlora_args) -> LoraConfig:
     return peft_config
 
 def finetune():
+    huggingface_login()
+
     parser = HfArgumentParser(
         (ModelArguments, DataArguments, ModelTrainingArguments, QuanitzationArguments, QloraArguments)
     )
-    model_args, data_args, training_args, quant_args, qlora_args = parser.parse_args_into_dataclasses()
+    model_args, data_args, training_args, quant_args, qlora_args, remaining = parser.parse_args_into_dataclasses(return_remaining_strings=True) #TODO: remaining and the argument were added due to a weird error on Vast
 
     # logic to restart from checkpoint
-    # should the logic be here? or before i load in the model, tokenizer, data...need to find some better examples
+    resume_from_checkpoint = False
     checkpoints = list(
         pathlib.Path(training_args.output_dir).glob('checkpoint-*'))
     if checkpoints:
-        trainer.train(resume_from_checkpoint=True)
-    else:
-        trainer.train()
-
-    dataset = load_dataset(data_args.hf_data_path, split=data_args.split)
-    dataset = dataset.remove_columns(['instruction', 'input', 'output']) #TODO: this is python dataset specific preprocessing. Will need to handle this inside preprocess function somehow
+        resume_from_checkpoint = True
 
     bnb_config = build_bnb_config(quant_args=quant_args)
     peft_config = build_lora_config(qlora_args=qlora_args)
@@ -257,6 +298,9 @@ def finetune():
     tokenizer = AutoTokenizer.from_pretrained(model_args.model_name)
     tokenizer.pad_token = tokenizer.eos_token
 
+    dataset = load_dataset(data_args.hf_data_path, split=data_args.split)
+    dataset = dataset.remove_columns(['instruction', 'input', 'output']) #TODO: this is python dataset specific preprocessing. Will need to handle this inside preprocess function somehow
+
     trainer = SFTTrainer(
         model=model,  
         train_dataset=dataset,
@@ -267,7 +311,9 @@ def finetune():
         args=training_args,
         packing=False,
     )
-
+    
+    trainer.add_callback(CheckpointCallback(training_args=training_args)) #could just pass in output_dir here
+    trainer.train(resume_from_checkpoint=resume_from_checkpoint)
     trainer.save_state() #grabbed from skypilot but need to understand state better
     safe_save_model_for_hf_trainer(trainer=trainer,
                                    output_dir=training_args.output_dir)
