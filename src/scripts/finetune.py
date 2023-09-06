@@ -70,7 +70,7 @@ class ModelTrainingArguments(TrainingArguments):
         metadata={"help": "Different models have different max lengths but this keeps it at a standard 512 incase you don't specify. Seq might be truncated"}
     )
     output_dir : str = field(
-        default="results", 
+        default="./results",
         metadata={"help": "Optional path where you want model checkpoints and final model to be saved"}
     ) 
     num_train_epochs : int = field(
