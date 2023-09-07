@@ -200,6 +200,7 @@ class CheckpointCallback(TrainerCallback):
        self.training_args = training_args
    
    def on_save(self, args: TrainingArguments, state: TrainerState, control: TrainerControl, **kwargs):
+        # throw this into the init
         try:
             ACCESS_KEY_ID = os.environ['ACCESS_KEY_ID']
             SECRET_ACCESS_KEY = os.environ['SECRET_ACCESS_KEY']
