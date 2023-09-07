@@ -4,6 +4,7 @@ from typing import Optional, Dict, List
 import logging
 import nvidia_smi
 import os
+import shutil
 import s3fs
 
 import torch
@@ -222,6 +223,8 @@ class CheckpointCallback(TrainerCallback):
             with s3.open(f's3://demo-bucket/{filename}', 'wb') as f:
                 f.write(open(os.path.join(ckpt_dir, filename), 'rb').read())
 
+        #remove local files after upload
+        shutil.rmtree(ckpt_dir)
         
 def huggingface_login():
     try: 
