@@ -197,34 +197,57 @@ class QloraArguments():
     )
 
 class CheckpointCallback(TrainerCallback):
-   def __init__(self, training_args) -> None:
-       self.training_args = training_args
+    def __init__(self, training_args, s3connection) -> None:
+        self.training_args = training_args
+        self.s3connection = s3connection
    
-   def on_save(self, args: TrainingArguments, state: TrainerState, control: TrainerControl, **kwargs):
-        # throw this into the init
-        try:
-            ACCESS_KEY_ID = os.environ['ACCESS_KEY_ID']
-            SECRET_ACCESS_KEY = os.environ['SECRET_ACCESS_KEY']
-            ENDPOINT_URL = os.environ['ENDPOINT_URL']
-        except KeyError:
-            raise Exception("Need to pass in Storj credentials as environment variables")
-        
-        storage_options = {
-            "key": ACCESS_KEY_ID,
-            "sec": SECRET_ACCESS_KEY,
-            "client_kwargs": {
-                "endpoint_url": ENDPOINT_URL
-            }
-        }
-
-        s3 = s3fs.S3FileSystem(**storage_options)
+    def on_save(self, args: TrainingArguments, state: TrainerState, control: TrainerControl, **kwargs):
+        s3 = self.s3connection
         ckpt_dir = self.training_args.output_dir
         for filename in os.listdir(ckpt_dir):
-            with s3.open(f's3://demo-bucket/{filename}', 'wb') as f:
+            with s3.open(f's3://demo-bucket/{filename}', 'wb') as f: #TODO: demo-bucket needs to be passed in 
                 f.write(open(os.path.join(ckpt_dir, filename), 'rb').read())
 
         #remove local files after upload
         shutil.rmtree(ckpt_dir)
+
+def cloud_storage_connection():
+    """
+    helper function that handles connection to Storj and returns an s3 instance
+    """
+    try:
+        ACCESS_KEY_ID = os.environ['ACCESS_KEY_ID']
+        SECRET_ACCESS_KEY = os.environ['SECRET_ACCESS_KEY']
+        ENDPOINT_URL = os.environ['ENDPOINT_URL']
+    except KeyError:
+        raise Exception("Need to pass in Storj credentials as environment variables")
+    
+    storage_options = {
+            "key": ACCESS_KEY_ID,
+            "secret": SECRET_ACCESS_KEY,
+            "client_kwargs": {
+                "endpoint_url": ENDPOINT_URL
+            }
+        }
+    
+    s3 = s3fs.S3FileSystem(**storage_options)
+    return s3
+
+def pull_checkpoint_from_cloud(training_args, s3connection) -> bool:
+    """
+    checks the cloud bucket for checkpoints
+    if exists, it downloads locally to the specified output_dir and returns true
+    else, it returns false
+    """
+    s3 = s3connection
+    ckpt_folders = s3.ls("s3://demo-bucket")
+    if ckpt_folders:
+        ckpt_folders.sort(reverse=False) #ensures that the lastest number is the first index
+        s3.get(f"s3://{ckpt_folders[0]}", training_args.output_dir,recursive=True) #download all files
+        print("Checkpoint successfully downloaded!")
+        return True
+    else:
+        return False
         
 def huggingface_login():
     try: 
@@ -235,10 +258,12 @@ def huggingface_login():
     login(token=HUGGING_FACE_TOKEN)
 
 def safe_save_model_for_hf_trainer(trainer: Trainer, output_dir: str):
-    # Get model state dict containing weights at time of call
-    # Convert to CPU tensors -> reduced memory?
-    # Delete original state dict to free VRAM
-    # _save() call to save it to disk/or external storage...?
+    """
+    - Get model state dict containing weights at time of call
+    - Convert to CPU tensors -> reduced memory?
+    - Delete original state dict to free VRAM
+    - _save() call to save it to disk/or external storage...?
+    """
     state_dict = trainer.model.state_dict()
     if trainer.args.should_save():
         cpu_state_dict = {key: value.cpu() for key, value in state_dict.items()}
@@ -284,11 +309,12 @@ def finetune():
     model_args, data_args, training_args, quant_args, qlora_args, remaining = parser.parse_args_into_dataclasses(return_remaining_strings=True) #TODO: remaining and the argument were added due to a weird error on Vast
 
     # logic to restart from checkpoint
+    s3connect = cloud_storage_connection() #TODO: logic will change if we make cloud storage optional
     resume_from_checkpoint = False
-    checkpoints = list(
-        pathlib.Path(training_args.output_dir).glob('checkpoint-*'))
-    if checkpoints:
-        resume_from_checkpoint = True
+
+    cloud_checkpoint = pull_checkpoint_from_cloud(training_args=training_args, s3connection=s3connect)
+    if cloud_checkpoint: #the checkpoint should be locally stored in output_dir
+        resume_from_checkpoint=True
 
     bnb_config = build_bnb_config(quant_args=quant_args)
     peft_config = build_lora_config(qlora_args=qlora_args)
@@ -316,7 +342,7 @@ def finetune():
         packing=False,
     )
     
-    trainer.add_callback(CheckpointCallback(training_args=training_args)) #could just pass in output_dir here
+    trainer.add_callback(CheckpointCallback(training_args=training_args, s3connection=s3connect)) #could just pass in output_dir here
     trainer.train(resume_from_checkpoint=resume_from_checkpoint)
     trainer.save_state() #grabbed from skypilot but need to understand state better
     safe_save_model_for_hf_trainer(trainer=trainer,
