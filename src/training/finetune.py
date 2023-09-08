@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Optional, Dict
 import logging
 import nvidia_smi
 import os
