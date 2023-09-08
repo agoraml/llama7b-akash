@@ -1,11 +1,8 @@
 from dataclasses import dataclass, field
-import pathlib
-from typing import Optional, Dict, List
+from typing import Optional
 import logging
 import nvidia_smi
 import os
-import shutil
-import s3fs
 
 import torch
 from datasets import load_dataset
@@ -27,7 +24,7 @@ from peft import (
 from transformers.trainer_callback import TrainerControl, TrainerState
 from transformers.training_args import TrainingArguments
 from trl import SFTTrainer
-from storj import Storj
+from helpers.storj import Storj
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -67,8 +64,8 @@ class ModelTrainingArguments(TrainingArguments):
         default=None,
         metadata={"help": "Unique id for the model training job"}
     )
-    bucket_name : str = field(
-        default='',
+    bucket_name : Optional[str] = field(
+        default=None,
         metadata={"help": "The name of the Storj bucket to upload/download checkpoints to and from"}
     )
     cache_dir : Optional[str] = field(
