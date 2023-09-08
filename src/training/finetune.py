@@ -27,6 +27,7 @@ from peft import (
 from transformers.trainer_callback import TrainerControl, TrainerState
 from transformers.training_args import TrainingArguments
 from trl import SFTTrainer
+from storj import Storj
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -61,7 +62,15 @@ class DataArguments:
 class ModelTrainingArguments(TrainingArguments):
     # Specify an additional cache dir for files downloaded during training
     # Usually things are downloaded into ~/.cache/huggingface
-    # Adding this is helpful for distributed training where all workers should read from a central cache 
+    # Adding this is helpful for distributed training where all workers should read from a central cache
+    job_id : int = field(
+        default=None,
+        metadata={"help": "Unique id for the model training job"}
+    )
+    bucket_name : str = field(
+        default='',
+        metadata={"help": "The name of the Storj bucket to upload/download checkpoints to and from"}
+    )
     cache_dir : Optional[str] = field(
         default=None,
         metadata={"help": "Optional path where you want model checkpoints and final model to be saved"}
@@ -74,9 +83,12 @@ class ModelTrainingArguments(TrainingArguments):
         default="./results",
         metadata={"help": "Optional path where you want model checkpoints and final model to be saved"}
     ) 
-    num_train_epochs : int = field(
-        default=1,
-        metadata={"help": "Number of training epochs"}
+    # num_train_epochs : int = field(
+    #     default=1,
+    #     metadata={"help": "Number of training epochs"}
+    # )
+    max_steps : int = field(
+        default=20
     )
     fp16 : bool = field(
         default=True,
@@ -86,7 +98,7 @@ class ModelTrainingArguments(TrainingArguments):
         default=False,
         metadata={"help": "Enable bf16 training. Only possible on A100 GPUs"}
     )
-    per_device_train_batch_size : bool = field(
+    per_device_train_batch_size : int = field(
         default=10,
         metadata={"help": "Training batch size per device"}
     )
@@ -197,57 +209,12 @@ class QloraArguments():
     )
 
 class CheckpointCallback(TrainerCallback):
-    def __init__(self, training_args, s3connection) -> None:
+    def __init__(self, training_args: TrainingArguments, storj: Storj) -> None:
         self.training_args = training_args
-        self.s3connection = s3connection
+        self.storj = storj
    
     def on_save(self, args: TrainingArguments, state: TrainerState, control: TrainerControl, **kwargs):
-        s3 = self.s3connection
-        ckpt_dir = self.training_args.output_dir
-        for filename in os.listdir(ckpt_dir):
-            with s3.open(f's3://demo-bucket/{filename}', 'wb') as f: #TODO: demo-bucket needs to be passed in 
-                f.write(open(os.path.join(ckpt_dir, filename), 'rb').read())
-
-        #remove local files after upload
-        shutil.rmtree(ckpt_dir)
-
-def cloud_storage_connection():
-    """
-    helper function that handles connection to Storj and returns an s3 instance
-    """
-    try:
-        ACCESS_KEY_ID = os.environ['ACCESS_KEY_ID']
-        SECRET_ACCESS_KEY = os.environ['SECRET_ACCESS_KEY']
-        ENDPOINT_URL = os.environ['ENDPOINT_URL']
-    except KeyError:
-        raise Exception("Need to pass in Storj credentials as environment variables")
-    
-    storage_options = {
-            "key": ACCESS_KEY_ID,
-            "secret": SECRET_ACCESS_KEY,
-            "client_kwargs": {
-                "endpoint_url": ENDPOINT_URL
-            }
-        }
-    
-    s3 = s3fs.S3FileSystem(**storage_options)
-    return s3
-
-def pull_checkpoint_from_cloud(training_args, s3connection) -> bool:
-    """
-    checks the cloud bucket for checkpoints
-    if exists, it downloads locally to the specified output_dir and returns true
-    else, it returns false
-    """
-    s3 = s3connection
-    ckpt_folders = s3.ls("s3://demo-bucket")
-    if ckpt_folders:
-        ckpt_folders.sort(reverse=False) #ensures that the lastest number is the first index
-        s3.get(f"s3://{ckpt_folders[0]}", training_args.output_dir,recursive=True) #download all files
-        print("Checkpoint successfully downloaded!")
-        return True
-    else:
-        return False
+        self.storj.save_checkpoints_to_cloud(args.output_dir, state.global_step, args.job_id)
         
 def huggingface_login():
     try: 
@@ -265,7 +232,7 @@ def safe_save_model_for_hf_trainer(trainer: Trainer, output_dir: str):
     - _save() call to save it to disk/or external storage...?
     """
     state_dict = trainer.model.state_dict()
-    if trainer.args.should_save():
+    if trainer.args.should_save:
         cpu_state_dict = {key: value.cpu() for key, value in state_dict.items()}
         del state_dict
         trainer._save(output_dir, state_dict=cpu_state_dict)
@@ -285,7 +252,7 @@ def print_gpu_utilization():
 def build_bnb_config(quant_args) -> BitsAndBytesConfig:
     bnb_config = BitsAndBytesConfig(
         load_in_4bit=quant_args.load_in_4bit,
-        bnb_4bit_quant_type=quant_args.bnb_4bit_quant_dtype,
+        bnb_4bit_quant_type=quant_args.bnb_4bit_quant_type,
         bnb_4bit_compute_dtype=quant_args.bnb_4bit_compute_dtype
     )
     return bnb_config
@@ -308,13 +275,11 @@ def finetune():
     )
     model_args, data_args, training_args, quant_args, qlora_args, remaining = parser.parse_args_into_dataclasses(return_remaining_strings=True) #TODO: remaining and the argument were added due to a weird error on Vast
 
-    # logic to restart from checkpoint
-    s3connect = cloud_storage_connection() #TODO: logic will change if we make cloud storage optional
+    # if bucket_name is not '', check for checkpoints in user's bucket
     resume_from_checkpoint = False
-
-    cloud_checkpoint = pull_checkpoint_from_cloud(training_args=training_args, s3connection=s3connect)
-    if cloud_checkpoint: #the checkpoint should be locally stored in output_dir
-        resume_from_checkpoint=True
+    if training_args.bucket_name:
+        storj = Storj(training_args.bucket_name)
+        resume_from_checkpoint = storj.pull_checkpoints_from_cloud(training_args)
 
     bnb_config = build_bnb_config(quant_args=quant_args)
     peft_config = build_lora_config(qlora_args=qlora_args)
@@ -341,8 +306,8 @@ def finetune():
         args=training_args,
         packing=False,
     )
-    
-    trainer.add_callback(CheckpointCallback(training_args=training_args, s3connection=s3connect)) #could just pass in output_dir here
+    if training_args.bucket_name:
+        trainer.add_callback(CheckpointCallback(training_args, storj))
     trainer.train(resume_from_checkpoint=resume_from_checkpoint)
     trainer.save_state() #grabbed from skypilot but need to understand state better
     safe_save_model_for_hf_trainer(trainer=trainer,
