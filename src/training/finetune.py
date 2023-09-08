@@ -83,12 +83,9 @@ class ModelTrainingArguments(TrainingArguments):
         default="./results",
         metadata={"help": "Optional path where you want model checkpoints and final model to be saved"}
     ) 
-    # num_train_epochs : int = field(
-    #     default=1,
-    #     metadata={"help": "Number of training epochs"}
-    # )
-    max_steps : int = field(
-        default=20
+    num_train_epochs : int = field(
+        default=1,
+        metadata={"help": "Number of training epochs"}
     )
     fp16 : bool = field(
         default=True,
