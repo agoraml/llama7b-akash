@@ -3,6 +3,7 @@ from typing import Optional, Dict
 import logging
 import nvidia_smi
 import os
+import sys
 
 import torch
 from datasets import load_dataset
@@ -19,15 +20,18 @@ from transformers import (
 )
 from peft import (
     LoraConfig,
-    AutoPeftModelForCausalLM
 )
 from transformers.trainer_callback import TrainerControl, TrainerState
 from transformers.training_args import TrainingArguments
 from trl import SFTTrainer
-from helpers.storj import Storj
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
+
+ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+sys.path.append(ROOT_DIR)
+
+from src.bucket.storj import Storj
 
 @dataclass
 class ModelArguments:

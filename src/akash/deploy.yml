@@ -3,7 +3,17 @@ version: "2.0"
 
 services:
   finetune:
-    image: tmontfort/finetune:latest
+    image: tmontfort/finetune:checkpoint
+    env:
+        - HUGGING_FACE_TOKEN=
+        - ACCESS_KEY_ID=
+        - SECRET_ACCESS_KEY=
+        - ENDPOINT_URL=
+    command:
+        - "sh"
+        - "-c"
+    args:
+        - 'python3 src/training/finetune.py --bucket_name demo-bucket --job_id 4'
     expose:
       - port: 8000
         as: 80
@@ -23,12 +33,17 @@ profiles:
           attributes:
             vendor:
               nvidia:
+              - model: 3090
+              - model: v100
+              - model: a100
+              - model: h100
+              - model: a40
         storage:
           - size: 40Gi
   placement:
     akash:
       pricing:
-        falcon7b: 
+        finetune: 
           denom: uakt
           amount: 100000
 

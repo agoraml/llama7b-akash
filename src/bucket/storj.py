@@ -2,7 +2,7 @@ import os
 import s3fs
 import re
 import shutil
-from cloud_bucket import CloudBucket
+from src.bucket.cloud_bucket import CloudBucket
 
 
 class Storj(CloudBucket):
