@@ -88,5 +88,6 @@ class Storj(CloudBucket):
                     f"Bucket {self.bucket_name} does not exist on user Storj account"
                 )
 
-        # remove local files after upload
-        shutil.rmtree(local_ckpt_dir)
+        # remove local files after upload except for final ckpt which is needed for inference script
+        if step != "final":
+            shutil.rmtree(local_ckpt_dir)

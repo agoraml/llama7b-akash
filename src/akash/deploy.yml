@@ -3,7 +3,7 @@ version: "2.0"
 
 services:
   finetune:
-    image: tmontfort/finetune:checkpoint
+    image: tmontfort/finetune:inference
     env:
         - HUGGING_FACE_TOKEN=
         - ACCESS_KEY_ID=
@@ -13,9 +13,9 @@ services:
         - "sh"
         - "-c"
     args:
-        - 'python3 src/training/finetune.py --bucket_name demo-bucket --job_id 4'
+        - 'python3 src/finetune_inference_flow.py --bucket_name demo-bucket --job_id 4'
     expose:
-      - port: 8000
+      - port: 80
         as: 80
         to:
           - global: true
