@@ -88,6 +88,10 @@ class ModelTrainingArguments(TrainingArguments):
         default=1,
         metadata={"help": "Number of training epochs"}
     )
+    max_steps : int = field(
+        default=-1,
+        metadata={"help": "The total number of training steps. Overrides num_training_epochs"}
+    )
     fp16 : bool = field(
         default=True,
         metadata={"help": "Enable fp16 training"}
