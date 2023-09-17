@@ -1,8 +1,8 @@
-from dataclasses import dataclass, field
-from typing import Optional, Dict
+from typing import Dict
 import logging
 import nvidia_smi
 import os
+import torch
 
 from datasets import load_dataset
 from huggingface_hub import login
@@ -133,3 +133,9 @@ def finetune(model_args, data_args , training_args, quant_args, qlora_args):
                                    output_dir=training_args.output_dir,
                                    job_id=training_args.job_id,
                                    storj=storj)
+    
+    print_gpu_utilization()
+    del model
+    del trainer
+    torch.cuda.empty_cache()
+    print_gpu_utilization()

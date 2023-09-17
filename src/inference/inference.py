@@ -2,6 +2,7 @@ import torch
 import os
 from peft import AutoPeftModelForCausalLM
 from transformers import AutoTokenizer
+from src.training.finetune import print_gpu_utilization
 
 def save_model_for_inference(model_name : str, new_model_name : str, output_dir : str):
     # save the model
@@ -20,6 +21,8 @@ def save_model_for_inference(model_name : str, new_model_name : str, output_dir 
     merged_model.save_pretrained(output_merged_dir)
     tokenizer.save_pretrained(output_merged_dir)
 
-    #after this we run the shell script (serve.sh) either through here or maybe a master
-    # inference script. I think this could be called model_merge and the master script could
-    # be called inference
+    print_gpu_utilization()
+    del model
+    del merged_model
+    torch.cuda.empty_cache()
+    print_gpu_utilization()
