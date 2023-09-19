@@ -2,7 +2,7 @@ import os
 import s3fs
 import re
 import shutil
-from cloud_bucket import CloudBucket
+from src.bucket.cloud_bucket import CloudBucket
 
 
 class Storj(CloudBucket):
@@ -28,11 +28,14 @@ class Storj(CloudBucket):
         return f"{self.bucket_name}/training-job-id-{job_id}/"
 
     def filter_ckpt_folders(self, ckpt_folders, job_id):
-        directory_pattern = rf"^{self.get_job_directory(job_id)}checkpoint-(\d+)$"
+        directory_pattern = rf"^{self.get_job_directory(job_id)}checkpoint-(\w+)$"
         max_checkpoint = -1
         return_folder = ""
         for folder in ckpt_folders:
             match = re.match(directory_pattern, folder)
+            ## If final checkpoint, return immediately
+            if match and match.group(1) == "final":
+                return folder, match.group(1)
             if match and (int(match.group(1)) > max_checkpoint):
                 max_checkpoint = int(match.group(1))
                 return_folder = folder
@@ -52,30 +55,30 @@ class Storj(CloudBucket):
             print(
                 f"No checkpoints exist in Storj bucket demo-bucket for job id={training_args.job_id}"
             )
-            return False
+            return (False, False)
 
-        ckpt_folder, step_num = self.filter_ckpt_folders(
+        ckpt_folder, step = self.filter_ckpt_folders(
             ckpt_folders, training_args.job_id
         )
         if ckpt_folder:
-            local_dir = os.path.join(training_args.output_dir, f"checkpoint-{step_num}")
+            local_dir = os.path.join(training_args.output_dir, f"checkpoint-{step}")
             self.s3.get(
                 f"s3://{ckpt_folder}", local_dir, recursive=True
             )  # download all files
-            print(f"Checkpoint from step {step_num} successfully downloaded!")
-            return True
+            print(f"Checkpoint from step {step} successfully downloaded!")
+            return (True, step == "final")
         # the directory /{bucket-name}/training-job-id{job_id}/ exists but no valid checkpoint folders
         else:
             print(
                 f"No valid checkpoint directories exist in Storj bucket demo-bucket for job id={training_args.job_id}"
             )
-            return False
+            return (False, False)
 
-    def save_checkpoints_to_cloud(self, output_dir, step_num, job_id):
-        local_ckpt_dir = f"{output_dir}/checkpoint-{step_num}"
+    def save_checkpoints_to_cloud(self, output_dir, step, job_id):
+        local_ckpt_dir = f"{output_dir}/checkpoint-{step}"
         for filename in os.listdir(local_ckpt_dir):
             bucket_path = (
-                f"s3://{self.get_job_directory(job_id)}checkpoint-{step_num}/{filename}"
+                f"s3://{self.get_job_directory(job_id)}checkpoint-{step}/{filename}"
             )
             try:
                 with self.s3.open(bucket_path, "wb") as f:
@@ -85,5 +88,6 @@ class Storj(CloudBucket):
                     f"Bucket {self.bucket_name} does not exist on user Storj account"
                 )
 
-        # remove local files after upload
-        shutil.rmtree(local_ckpt_dir)
+        # remove local files after upload except for final ckpt which is needed for inference script
+        if step != "final":
+            shutil.rmtree(local_ckpt_dir)
