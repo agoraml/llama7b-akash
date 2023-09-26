@@ -112,6 +112,7 @@ def finetune(model_args, data_args , training_args, quant_args, qlora_args):
     tokenizer = AutoTokenizer.from_pretrained(model_args.model_name)
     tokenizer.pad_token = tokenizer.eos_token
 
+    #TODO: handle dataset logic here. load it, then depending on the name, do the preprocessing. need to do all checks to ensure only pass in datasets we support, etc
     dataset = load_dataset(data_args.hf_data_path, split=data_args.split)
     dataset = dataset.remove_columns(['instruction', 'input', 'output']) #TODO: this is python dataset specific preprocessing. Will need to handle this inside preprocess function somehow
 
