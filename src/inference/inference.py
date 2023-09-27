@@ -95,7 +95,7 @@ class InferenceUI:
         return response.strip()
     
     def launch_chat(self):
-        gr.ChatInterface(self.get_llama_response).launch(share=True) 
+        gr.ChatInterface(self.get_llama_response).launch(server_name='0.0.0.0') 
 
 def launch_inference(model_name : str, output_dir : str):
     inference_ui = InferenceUI(model_name, output_dir)
