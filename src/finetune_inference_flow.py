@@ -13,7 +13,7 @@ ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.append(ROOT_DIR)
 
 from src.training.finetune import huggingface_login, finetune
-from src.inference.inference import save_model_for_inference
+from src.inference.inference import launch_inference
 
 
 @dataclass
@@ -203,14 +203,7 @@ def main():
     
     finetune(model_args, data_args, training_args, quant_args, qlora_args)
 
-    save_model_for_inference(model_args.model_name, model_args.new_model_name, training_args.output_dir)
-
-    command = [os.path.abspath(os.path.join(os.path.dirname(__file__), "inference", "serve.sh")), os.path.join(training_args.output_dir, model_args.new_model_name)]  
-    try:
-        # Run the shell script
-        subprocess.run(command, check=True)
-    except subprocess.CalledProcessError as e:
-        print(f"Error running the shell script: {e}")
+    launch_inference(model_args.model_name, training_args.output_dir)
 
 
 if __name__ == "__main__":
