@@ -5,11 +5,14 @@ from transformers import AutoTokenizer, pipeline
 from src.training.finetune import print_gpu_utilization
 import gradio as gr
 
+
 class AgoraInference:
     def __init__(self, model_name, output_dir):
         model = AutoPeftModelForCausalLM.from_pretrained(
-            os.path.join(output_dir, "checkpoint-final"), #this should be output directory/finalsave or whatever we put in the finetune script
-            device_map="auto", 
+            os.path.join(
+                output_dir, "checkpoint-final"
+            ),  # this should be output directory/finalsave or whatever we put in the finetune script
+            device_map="auto",
             torch_dtype=torch.bfloat16,
         )
         tokenizer = AutoTokenizer.from_pretrained(model_name)
@@ -20,13 +23,13 @@ class AgoraInference:
             model=model,
             torch_dtype=torch.float16,
             device_map="auto",
-            tokenizer = tokenizer 
+            tokenizer=tokenizer,
         )
-        
+
         self.model = model
         self.tokenizer = tokenizer
         self.pipeline = llama_pipeline
-        
+
     def format_message(self, message: str, history: list, memory_limit: int = 3) -> str:
         """
         Formats the message and history for the Llama model.
@@ -53,7 +56,9 @@ class AgoraInference:
         if len(history) == 0:
             return SYSTEM_PROMPT + f"{message} [/INST]"
 
-        formatted_message = SYSTEM_PROMPT + f"{history[0][0]} [/INST] {history[0][1]} </s>"
+        formatted_message = (
+            SYSTEM_PROMPT + f"{history[0][0]} [/INST] {history[0][1]} </s>"
+        )
 
         # Handle conversation history
         for user_msg, model_answer in history[1:]:
@@ -63,7 +68,7 @@ class AgoraInference:
         formatted_message += f"<s>[INST] {message} [/INST]"
 
         return formatted_message
-    
+
     # Generate a response from the Llama model
     def get_llama_response(self, message: str, history: list) -> str:
         """
@@ -88,11 +93,11 @@ class AgoraInference:
             max_length=1024,
         )
 
-        generated_text = sequences[0]['generated_text']
-        response = generated_text[len(query):]  # Remove the prompt from the output
+        generated_text = sequences[0]["generated_text"]
+        response = generated_text[len(query) :]  # Remove the prompt from the output
 
         print("Chatbot:", response.strip())
         return response.strip()
-    
+
     def launch_chat(self):
-        gr.ChatInterface(self.get_llama_response).launch(share=True)    
+        gr.ChatInterface(self.get_llama_response).launch(share=True)

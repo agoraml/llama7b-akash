@@ -57,9 +57,7 @@ class Storj(CloudBucket):
             )
             return (False, False)
 
-        ckpt_folder, step = self.filter_ckpt_folders(
-            ckpt_folders, training_args.job_id
-        )
+        ckpt_folder, step = self.filter_ckpt_folders(ckpt_folders, training_args.job_id)
         if ckpt_folder:
             local_dir = os.path.join(training_args.output_dir, f"checkpoint-{step}")
             self.s3.get(
