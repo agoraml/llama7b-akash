@@ -13,6 +13,7 @@ class InferenceUI:
             torch_dtype=torch.bfloat16,
         )
         tokenizer = AutoTokenizer.from_pretrained(model_name)
+        tokenizer.pad_token = tokenizer.eos_token
         print_gpu_utilization()
 
         llama_pipeline = pipeline(
