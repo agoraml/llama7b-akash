@@ -13,6 +13,8 @@ class InferenceUI:
             torch_dtype=torch.bfloat16,
         )
         tokenizer = AutoTokenizer.from_pretrained(model_name)
+        tokenizer.pad_token = tokenizer.eos_token
+
         print_gpu_utilization()
 
         llama_pipeline = pipeline(
@@ -29,7 +31,8 @@ class InferenceUI:
         
     def format_message(self, message: str, history: list, memory_limit: int = 3) -> str:
         """
-        Formats the message and history for the Llama model.
+        Formats the message based on our input. Does not handle history due to a short context and the 
+        prompt being so verbose
 
         Parameters:
             message (str): Current message to send.
@@ -39,30 +42,14 @@ class InferenceUI:
         Returns:
             str: Formatted message string
         """
+        instruction=f"Create a code snippet written in Python. {message}"
+        input = "" #empty string for now because user will just be passing in instruction and not an output for our purposes
+        
+        prompt =f"""
+                Below is an instruction that describes a task. Write a response that appropriately completes the request. ### Instruction: {instruction} ### Input: ### Output:
+                """
 
-        SYSTEM_PROMPT = """<s>[INST] <<SYS>>
-                You are a helpful chatbot that has been optimized for coding in Python. Limit all 
-                prose in your responses. Provide correct Python code without making up any functions at all. 
-                Make sure to add comments
-                <</SYS>>"""
-
-        # always keep len(history) <= memory_limit
-        if len(history) > memory_limit:
-            history = history[-memory_limit:]
-
-        if len(history) == 0:
-            return SYSTEM_PROMPT + f"{message} [/INST]"
-
-        formatted_message = SYSTEM_PROMPT + f"{history[0][0]} [/INST] {history[0][1]} </s>"
-
-        # Handle conversation history
-        for user_msg, model_answer in history[1:]:
-            formatted_message += f"<s>[INST] {user_msg} [/INST] {model_answer} </s>"
-
-        # Handle the current message
-        formatted_message += f"<s>[INST] {message} [/INST]"
-
-        return formatted_message
+        return prompt
     
     # Generate a response from the Llama model
     def get_llama_response(self, message: str, history: list) -> str:
@@ -95,7 +82,7 @@ class InferenceUI:
         return response.strip()
     
     def launch_chat(self):
-        gr.ChatInterface(self.get_llama_response).launch(server_name='0.0.0.0') 
+        gr.ChatInterface(self.get_llama_response).queue().launch(server_name='0.0.0.0') 
 
 def launch_inference(model_name : str, output_dir : str):
     inference_ui = InferenceUI(model_name, output_dir)

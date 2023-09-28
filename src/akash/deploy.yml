@@ -3,7 +3,7 @@ version: "2.0"
 
 services:
   finetune:
-    image: tmontfort/finetune:inference-v1.2
+    image: tmontfort/finetune:inference-v1.4
     env:
         - HUGGING_FACE_TOKEN=
         - ACCESS_KEY_ID=
@@ -38,6 +38,7 @@ profiles:
               - model: a100
               - model: h100
               - model: a40
+              - model: k80
         storage:
           - size: 40Gi
   placement:
