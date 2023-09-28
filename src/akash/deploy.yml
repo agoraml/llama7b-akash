@@ -3,7 +3,7 @@ version: "2.0"
 
 services:
   finetune:
-    image: tmontfort/finetune:inference-v1.1
+    image: tmontfort/finetune:inference-v1.2
     env:
         - HUGGING_FACE_TOKEN=
         - ACCESS_KEY_ID=
