@@ -5,4 +5,4 @@ WORKDIR /training
 COPY . .
 
 RUN pip install -r requirements.txt
-ENTRYPOINT ["python3", "src/scripts/finetune.py"]
+ENTRYPOINT ["python3", "src/finetune_inference_flow.py"]

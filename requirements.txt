@@ -10,3 +10,6 @@ scipy==1.11.2
 trl==0.7.1
 torch==2.0.1
 transformers==4.32.1
+s3fs==2023.9.0
+gradio==3.44.3
+typing_extensions==4.7.1
