@@ -43,17 +43,10 @@ class InferenceUI:
         """
         instruction=f"Create a code snippet written in Python. {message}"
         input = "" #empty string for now because user will just be passing in instruction and not an output for our purposes
-        prompt = f"""### Instruction:
-                    Use the Task below and the Input given to write the Response, which is Python code that can solve the Task.
-                    
-                    ### Task:
-                    {instruction}
-                    
-                    ### Input:
-                    {input}
-                    
-                    ### Response:
-                    """
+        
+        prompt =f"""
+                Below is an instruction that describes a task. Write a response that appropriately completes the request. ### Instruction: {instruction} ### Input: ### Output:
+                """
 
         return prompt
     
