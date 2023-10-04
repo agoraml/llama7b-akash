@@ -3,10 +3,10 @@ import s3fs
 import re
 import shutil
 from src.bucket.cloud_bucket import CloudBucket
-
+from transformers import TrainingArguments
 
 class Storj(CloudBucket):
-    def __init__(self, bucket_name):
+    def __init__(self, bucket_name: str):
         try:
             ACCESS_KEY_ID = os.environ["ACCESS_KEY_ID"]
             SECRET_ACCESS_KEY = os.environ["SECRET_ACCESS_KEY"]
@@ -24,10 +24,10 @@ class Storj(CloudBucket):
         self.s3 = s3fs.S3FileSystem(**storage_options)
         self.bucket_name = bucket_name
 
-    def get_job_directory(self, job_id):
+    def get_job_directory(self, job_id: str):
         return f"{self.bucket_name}/training-job-id-{job_id}/"
 
-    def filter_ckpt_folders(self, ckpt_folders, job_id):
+    def filter_ckpt_folders(self, ckpt_folders: list, job_id: str):
         directory_pattern = rf"^{self.get_job_directory(job_id)}checkpoint-(\w+)$"
         max_checkpoint = -1
         return_folder = ""
@@ -41,7 +41,7 @@ class Storj(CloudBucket):
                 return_folder = folder
         return return_folder, max_checkpoint
 
-    def pull_checkpoints_from_cloud(self, training_args) -> bool:
+    def pull_checkpoints_from_cloud(self, training_args: TrainingArguments) -> bool:
         """
         checks the cloud bucket for checkpoints
         if exists, it downloads locally to the specified output_dir and returns true
@@ -74,7 +74,7 @@ class Storj(CloudBucket):
             )
             return (False, False)
 
-    def save_checkpoints_to_cloud(self, output_dir, step, job_id):
+    def save_checkpoints_to_cloud(self, output_dir: str, step: str, job_id: str):
         local_ckpt_dir = f"{output_dir}/checkpoint-{step}"
         for filename in os.listdir(local_ckpt_dir):
             bucket_path = (

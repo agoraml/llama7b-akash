@@ -22,6 +22,8 @@ from transformers.trainer_callback import TrainerControl, TrainerState
 from transformers.training_args import TrainingArguments
 from trl import SFTTrainer
 
+from finetune_inference_flow import (ModelArguments, DataArguments, ModelTrainingArguments, QuantizationArguments, QloraArguments)
+
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
@@ -70,7 +72,7 @@ def print_gpu_utilization():
         print("Device {}: {}, Memory : ({:.2f}% free): {}(total), {} (free), {} (used)".format(i, nvidia_smi.nvmlDeviceGetName(handle), 100*info.free/info.total, info.total, info.free, info.used))
     nvidia_smi.nvmlShutdown()
 
-def build_bnb_config(quant_args) -> BitsAndBytesConfig:
+def build_bnb_config(quant_args: QuantizationArguments) -> BitsAndBytesConfig:
     bnb_config = BitsAndBytesConfig(
         load_in_4bit=quant_args.load_in_4bit,
         bnb_4bit_quant_type=quant_args.bnb_4bit_quant_type,
@@ -78,7 +80,7 @@ def build_bnb_config(quant_args) -> BitsAndBytesConfig:
     )
     return bnb_config
 
-def build_lora_config(qlora_args) -> LoraConfig:
+def build_lora_config(qlora_args: QloraArguments) -> LoraConfig:
     peft_config = LoraConfig(
         lora_alpha=qlora_args.lora_alpha,
         lora_dropout=qlora_args.lora_dropout,
@@ -88,7 +90,7 @@ def build_lora_config(qlora_args) -> LoraConfig:
     )
     return peft_config
 
-def finetune(model_args, data_args , training_args, quant_args, qlora_args):
+def finetune(model_args: ModelArguments, data_args: DataArguments , training_args: ModelTrainingArguments, quant_args: QuantizationArguments, qlora_args: QloraArguments):
     # if bucket_name is not '', check for checkpoints in user's bucket
     resume_from_checkpoint = False
     storj = None
