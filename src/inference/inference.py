@@ -1,37 +1,48 @@
-import torch
 import os
-from peft import AutoPeftModelForCausalLM
-from transformers import AutoTokenizer, pipeline
-import gradio as gr
+from typing import List
+
+import gradio as gr  # type: ignore
+import torch
+from peft import AutoPeftModelForCausalLM  # type: ignore
+from transformers import AutoTokenizer, pipeline  # type: ignore
+
 from src.training.finetune import print_gpu_utilization
 
+
 class InferenceUI:
-    def __init__(self, model_name: str, output_dir: str):
-        model = AutoPeftModelForCausalLM.from_pretrained(
-            os.path.join(output_dir, "checkpoint-final"), #this should be output directory/finalsave or whatever we put in the finetune script
-            device_map="auto", 
+    def __init__(self, model_name: str, output_dir: str) -> None:
+        model = AutoPeftModelForCausalLM.from_pretrained(  # type: ignore
+            os.path.join(
+                output_dir, "checkpoint-final"
+            ),  # this should be output directory/finalsave or whatever we put in the finetune script
+            device_map="auto",
             torch_dtype=torch.bfloat16,
         )
-        tokenizer = AutoTokenizer.from_pretrained(model_name)
+        tokenizer = AutoTokenizer.from_pretrained(model_name)  # type: ignore
         tokenizer.pad_token = tokenizer.eos_token
 
         print_gpu_utilization()
 
         llama_pipeline = pipeline(
             "text-generation",
-            model=model,
+            model=model,  # type: ignore
             torch_dtype=torch.float16,
             device_map="auto",
-            tokenizer = tokenizer 
+            tokenizer=tokenizer,
         )
-        
-        self.model = model
+
+        self.model = model  # type: ignore
         self.tokenizer = tokenizer
         self.pipeline = llama_pipeline
-        
-    def format_message(self, message: str, history: list, memory_limit: int = 3) -> str:
+
+    def format_message(
+        self,
+        message: str,
+        history: List[str],
+        memory_limit: int = 3,
+    ) -> str:
         """
-        Formats the message based on our input. Does not handle history due to a short context and the 
+        Formats the message based on our input. Does not handle history due to a short context and the
         prompt being so verbose
 
         Parameters:
@@ -42,17 +53,19 @@ class InferenceUI:
         Returns:
             str: Formatted message string
         """
-        instruction=f"Create a code snippet written in Python. {message}"
-        input = "" #empty string for now because user will just be passing in instruction and not an output for our purposes
-        
-        prompt =f"""
+        instruction = f"Create a code snippet written in Python. {message}"
+
+        # empty string for now because user will just be passing in instruction and not an output for our purposes
+        input = ""  # type: ignore
+
+        prompt = f"""
                 Below is an instruction that describes a task. Write a response that appropriately completes the request. ### Instruction: {instruction} ### Input: ### Output:
                 """
 
         return prompt
-    
+
     # Generate a response from the Llama model
-    def get_llama_response(self, message: str, history: list) -> str:
+    def get_llama_response(self, message: str, history: List[str]) -> str:
         """
         Generates a conversational response from the Llama model.
 
@@ -66,7 +79,7 @@ class InferenceUI:
         query = self.format_message(message, history)
         response = ""
 
-        sequences = self.pipeline(
+        sequences = self.pipeline(  # type: ignore
             query,
             do_sample=True,
             top_k=10,
@@ -75,15 +88,18 @@ class InferenceUI:
             max_length=1024,
         )
 
-        generated_text = sequences[0]['generated_text']
-        response = generated_text[len(query):]  # Remove the prompt from the output
+        generated_text: str = sequences[0]["generated_text"]  # type: ignore
+        response: str = generated_text[
+            len(query) :
+        ]  # Remove the prompt from the output
 
         print("Chatbot:", response.strip())
         return response.strip()
-    
-    def launch_chat(self):
-        gr.ChatInterface(self.get_llama_response).queue().launch(server_name='0.0.0.0') 
 
-def launch_inference(model_name : str, output_dir : str):
+    def launch_chat(self) -> None:
+        gr.ChatInterface(self.get_llama_response).queue().launch(server_name="0.0.0.0")  # type: ignore
+
+
+def launch_inference(model_name: str, output_dir: str) -> None:
     inference_ui = InferenceUI(model_name, output_dir)
     inference_ui.launch_chat()
