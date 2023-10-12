@@ -2,16 +2,9 @@ import os
 import re
 import shutil
 from typing import Any, List, Tuple, TypedDict
-from pydantic import BaseModel
 import s3fs  # type: ignore
-
+from transformers import TrainingArguments
 from src.bucket.cloud_bucket import CloudBucket
-
-
-class training_args_type(BaseModel):
-    job_id: int
-    output_dir: str
-    bucket_name: str
 
 
 class storage_options_type(TypedDict):
@@ -61,7 +54,7 @@ class Storj(CloudBucket):
         return return_folder, max_checkpoint
 
     def pull_checkpoints_from_cloud(  # type: ignore
-        self, training_args: training_args_type
+        self, training_args: TrainingArguments
     ) -> Tuple[bool, bool]:
         """
         checks the cloud bucket for checkpoints
@@ -70,7 +63,7 @@ class Storj(CloudBucket):
         """
         try:
             ckpt_folders: List[str] = self.s3.ls(  # type: ignore
-                f"s3://{self.get_job_directory(training_args.job_id)}"
+                f"s3://{self.get_job_directory(training_args.job_id)}"  # type: ignore
             )
         except FileNotFoundError:
             print(
@@ -89,7 +82,7 @@ class Storj(CloudBucket):
         # the directory /{bucket-name}/training-job-id{job_id}/ exists but no valid checkpoint folders
         else:
             print(
-                f"No valid checkpoint directories exist in Storj bucket demo-bucket for job id={training_args.job_id}"
+                f"No valid checkpoint directories exist in Storj bucket demo-bucket for job id={training_args.job_id}"  # type: ignore
             )
             return (False, False)
 

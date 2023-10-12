@@ -24,11 +24,25 @@ from trl import SFTTrainer  # type: ignore
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-from src.bucket.storj import Storj, training_args_type
+from src.bucket.storj import Storj
+
+
+class quant_args_type(BaseModel):
+    load_in_4bit: bool
+    bnb_4bit_quant_type: str
+    bnb_4bit_compute_dtype: str
+
+
+class qlora_args_type(BaseModel):
+    lora_alpha: int
+    lora_dropout: float
+    lora_r: int
+    bias: str
+    task_type: str
 
 
 class CheckpointCallback(TrainerCallback):
-    def __init__(self, training_args: training_args_type, storj: Storj | None) -> None:
+    def __init__(self, training_args: TrainingArguments, storj: Storj | None) -> None:
         self.training_args = training_args
         self.storj = storj
 
@@ -41,7 +55,7 @@ class CheckpointCallback(TrainerCallback):
     ):
         if self.storj is not None:
             self.storj.save_checkpoints_to_cloud(
-                args.output_dir, state.global_step, args.job_id
+                args.output_dir, state.global_step, args.job_id  # type: ignore
             )
 
 
@@ -79,20 +93,20 @@ def safe_save_model_for_hf_trainer(
         storj.save_checkpoints_to_cloud(output_dir, "final", job_id)
 
 
-def preprocess_data(source, tokenizer: PreTrainedTokenizer) -> dict:
-    return {}
+def preprocess_data(source, tokenizer: PreTrainedTokenizer) -> dict:  # type: ignore
+    return {}  # type: ignore
 
 
 def print_gpu_utilization() -> None:
     nvidia_smi.nvmlInit()
-    deviceCount = nvidia_smi.nvmlDeviceGetCount()
+    deviceCount: int = nvidia_smi.nvmlDeviceGetCount()
     for i in range(deviceCount):
-        handle = nvidia_smi.nvmlDeviceGetHandleByIndex(i)
-        info = nvidia_smi.nvmlDeviceGetMemoryInfo(handle)
+        handle = nvidia_smi.nvmlDeviceGetHandleByIndex(i)  # type: ignore
+        info = nvidia_smi.nvmlDeviceGetMemoryInfo(handle)  # type: ignore
         print(
             "Device {}: {}, Memory : ({:.2f}% free): {}(total), {} (free), {} (used)".format(
                 i,
-                nvidia_smi.nvmlDeviceGetName(handle),
+                nvidia_smi.nvmlDeviceGetName(handle),  # type: ignore
                 100 * info.free / info.total,
                 info.total,
                 info.free,
@@ -100,12 +114,6 @@ def print_gpu_utilization() -> None:
             )
         )
     nvidia_smi.nvmlShutdown()
-
-
-class quant_args_type(BaseModel):
-    load_in_4bit: bool
-    bnb_4bit_quant_type: str
-    bnb_4bit_compute_dtype: str
 
 
 def build_bnb_config(quant_args: quant_args_type) -> BitsAndBytesConfig:
@@ -117,15 +125,7 @@ def build_bnb_config(quant_args: quant_args_type) -> BitsAndBytesConfig:
     return bnb_config
 
 
-class qlora_args_type(BaseModel):
-    lora_alpha: float
-    lora_dropout: float
-    lora_r: float
-    bias: float
-    task_type: str
-
-
-def build_lora_config(qlora_args: quant_args_type) -> LoraConfig:
+def build_lora_config(qlora_args: qlora_args_type) -> LoraConfig:
     peft_config = LoraConfig(
         lora_alpha=qlora_args.lora_alpha,
         lora_dropout=qlora_args.lora_dropout,
@@ -139,15 +139,15 @@ def build_lora_config(qlora_args: quant_args_type) -> LoraConfig:
 def finetune(
     model_args: Dict[str, str],
     data_args: Dict[str, str],
-    training_args: training_args_type,
+    training_args: TrainingArguments,
     quant_args: quant_args_type,
     qlora_args: quant_args_type,
 ) -> None:
     # if bucket_name is not '', check for checkpoints in user's bucket
     resume_from_checkpoint = False
     storj: Storj | None = None
-    if training_args.bucket_name:
-        storj = Storj(training_args.bucket_name)
+    if training_args.bucket_name:  # type: ignore
+        storj = Storj(str(training_args.bucket_name))
         resume_from_checkpoint, is_final_checkpoint = storj.pull_checkpoints_from_cloud(
             training_args
         )
@@ -159,7 +159,7 @@ def finetune(
     bnb_config = build_bnb_config(quant_args=quant_args)
     peft_config = build_lora_config(qlora_args=qlora_args)
 
-    model = AutoModelForCausalLM.from_pretrained(
+    model: torch.Module | str = AutoModelForCausalLM.from_pretrained(
         model_args.model_name,
         quantization_config=bnb_config,
         device_map="auto",
@@ -174,23 +174,23 @@ def finetune(
     )  # TODO: this is python dataset specific preprocessing. Will need to handle this inside preprocess function somehow
 
     trainer = SFTTrainer(
-        model=model,
-        train_dataset=dataset,
-        peft_config=peft_config,
+        model=model,  # type: ignore
+        train_dataset=dataset,  # type: ignore
+        peft_config=peft_config,  # type: ignore
         dataset_text_field="prompt",  # TODO: this will change based on dataset. I would add this as an optional default into DataArguments
         max_seq_length=None,
         tokenizer=tokenizer,
         args=training_args,
         packing=False,
     )
-    if training_args.bucket_name:
+    if training_args.bucket_name:  # type: ignore
         trainer.add_callback(CheckpointCallback(training_args, storj))  # type: ignore
     trainer.train(resume_from_checkpoint=resume_from_checkpoint)  # type: ignore
     trainer.save_state()  # grabbed from skypilot but need to understand state better
     safe_save_model_for_hf_trainer(
         trainer=trainer,
         output_dir=training_args.output_dir,
-        job_id=training_args.job_id,
+        job_id=training_args.job_id,  # type: ignore
         storj=storj,
     )
 
