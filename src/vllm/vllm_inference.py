@@ -6,8 +6,8 @@ from transformers import HfArgumentParser
 @dataclass
 class ModelArguments:
     model_name: Optional[str] = field(
-        default="mistralai/Mistral-7B-Instruct-v0.1",
-        metadata={"help": "The model that you want to train from Huggingface. Defaults to Meta's Llama2 7B-chat and requires a HF login"}
+        default="TheBloke/Mistral-7B-Instruct-v0.1-AWQ",
+        metadata={"help": "The model that you want to train from Huggingface."}
     )
 
 def main():
